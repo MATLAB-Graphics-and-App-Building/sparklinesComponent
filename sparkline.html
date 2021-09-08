@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <title>Sparkline</title>
+    </head>
+    <body>
+        <canvas id="sparkline" width="200" height="40"></canvas> 
+    </body>
+        <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
+        <script type="text/javascript">
+            /**
+             * Setup function to connect the HTML content to the HTML UI 
+             * component in MATLAB.
+             */
+            function setup(htmlComponent) {
+                inputData = htmlComponent.Data;
+                
+                htmlComponent.addEventListener("DataChanged", function(event) {
+                    update(htmlComponent.Data);
+                });
+
+                update(htmlComponent.Data);
+            }
+
+            function update(inputData) {
+                var lineStyle = inputData[0];
+                var colorStyle = inputData[1];
+                var minMaxColors = [inputData[2], inputData[3]];
+                var minYVal = inputData[4];
+                var maxYVal = inputData[5];
+                var lineColor = inputData[6];
+                var lineWidth = inputData[7];
+                var rawData = inputData[8];
+                
+                drawSparkline(lineStyle, colorStyle, minMaxColors, minYVal, maxYVal,
+                    lineColor, lineWidth, rawData);
+            }
+
+
+            /**
+             * Convert raw data location to pixels location.
+             * @param {number/int} val - x or y value of raw data
+             * @param {number/int} minVal - minimum x or y value of raw data
+             * @param {number/int} maxVal - maximum x or y value of raw data
+             * @param {number/int} pixels - how many pixels correspond to 1 unit
+             *  of raw data
+             */
+            function getPixels(val, minVal, maxVal, pixels) {
+                return (val - minVal) / (maxVal - minVal) * pixels;
+            }
+
+            /**
+             * Convert raw data location to pixels location for bar graph
+             * @param {number/int} val - x or y value of raw data
+             * @param {number/int} minVal - minimum x or y value of raw data
+             * @param {number/int} maxVal - maximum x or y value of raw data
+             * @param {number/int} pixels - how many pixels correspond to 1 unit
+             *  of raw data
+             */
+             function getBarPixels(val, minVal, maxVal, pixels) {
+                return (val - minVal) / (maxVal) * pixels;
+            }
+
+            /**
+             * Draw line style based on linestyle
+             * @param {rendering context} c - 2d canvas context
+             * @param {string} lineStyle - line style of sparkline ("line",
+             *  "dotted", "dashed", "bar")
+             * @param {number} lineWidth - line width of sparkline
+             * @param {number} x0 - starting x value in pixels
+             * @param {number} y0 - starting y value in pixels
+             * @param {number} x1 - ending x value in pixels
+             * @param {number} y1 - ending y value in pixels
+             */
+            function drawLine(c, lineStyle, lineWidth, x0, y0, x1, y1) {
+                var dashArray = [];
+
+                switch(lineStyle) {
+                    case "dotted":
+                        dashArray = [lineWidth, 2 * lineWidth];
+                        break;
+                    case "dashed":
+                        dashArray = [5 * lineWidth, 5 * lineWidth];
+                        break;
+                    default:
+                        break;
+                }
+
+                if (!(lineStyle === "bar")) {
+                    c.setLineDash(dashArray);
+                    c.beginPath();
+                    c.moveTo(x0, y0);
+                    c.lineTo(x1, y1);
+                    c.stroke();
+                    c.closePath();
+                }
+            }
+
+            /**
+             * Draw a bar.
+             * @param {rendering context} c - 2d canvas context
+             * @param {array} fillColor - RGB triple for fill color of the bar 
+             * @param {number} x - x coordinate of the top left corner of the bar
+             * @param {number} y - y coordinate of the top left corner of the bar
+             * @param {number} width - width of the bar
+             * @param {number} height - height of the bar
+             */
+            function drawBar(c, fillColor, x, y, width, height) {
+                c.fillStyle = fillColor;
+                c.fillRect(x, y, width, height);
+            }
+
+            /**
+             * Create gradient or color based on color mode.
+             * @param {rendering context} c - 2d canvas context
+             * @param {number} x0 - starting x value in pixels
+             * @param {number} y0 - starting y value in pixels
+             * @param {number} x1 - ending x value in pixels
+             * @param {number} y1 - ending y value in pixels
+             * @param {number} startYVal - starting raw x value
+             * @param {number} endYVal - starting raw y value
+             * @param {number} minYVal - minimum raw y value
+             * @param {number} maxYVal - maximum raw y value
+             * @param {array} minColor - RGB triple corresponding to minimum raw
+             *  data y-value
+             * @param {array} maxColor - RGB triple corresponding to maximum raw
+             *  data y-value
+             * @return {array} start and end colors for the gradient
+             */ 
+            function setGradient(c, x0, y0, x1, y1, startYVal, endYVal, minYVal, maxYVal, 
+                minColor, maxColor) {
+                // How far along (proportionally) the starting and ending
+                // values of the line segment are along the color gradient
+                var startValProportion = (startYVal - minYVal) / (maxYVal - minYVal); 
+                var endValProportion = (endYVal - minYVal) / (maxYVal - minYVal); 
+
+                // Starting and ending colors of the current line segment
+                var startColor = [];
+                var endColor = [];
+
+                for(var j = 0; j < 3; j++) {
+                    startColor[j] = Math.round(minColor[j] + 
+                        startValProportion * (maxColor[j] - minColor[j]));
+                    endColor[j] = Math.round(minColor[j] + 
+                        endValProportion * (maxColor[j] - minColor[j]));
+                }
+
+                // Create the linear color gradient
+                var grad = c.createLinearGradient(x0, y0, x1, y1);
+                grad.addColorStop(0, `rgb(${startColor[0]}, ${startColor[1]}, ${startColor[2]})`);
+                grad.addColorStop(1, `rgb(${endColor[0]}, ${endColor[1]}, ${endColor[2]})`);
+
+                c.strokeStyle = grad;
+
+                return [`rgb(${startColor[0]}, ${startColor[1]}, ${startColor[2]})`, 
+                        `rgb(${endColor[0]}, ${endColor[1]}, ${endColor[2]})`]
+            }
+
+            /**
+             * Create gradient or color based on color mode.
+             * @param {rendering context} c - 2d canvas context
+             * @param {array} lineColor - RGB triple for sparkline color
+             * @return rgb string for the input color
+             */
+            function setColor(c, lineColor) {
+                // If the overall color is specified, set the stroke style as
+                // one color
+                var r = 255 * lineColor[0];
+                var g = 255 * lineColor[1];
+                var b = 255 * lineColor[2];
+                
+                c.strokeStyle = `rgb(${r}, ${g}, ${b})`;
+                return `rgb(${r}, ${g}, ${b})`;
+            }
+
+            /**
+             * Get pixel x and y values for two points given raw x and y values
+             * @param {function} f - function for converting raw x data to pixel data
+             * @param {function} g - function for converting raw y data to pixel data
+             * @param {number} raw_x0 - starting raw data x value 
+             * @param {number} raw_y0 - starting raw data y value
+             * @param {number} raw_x1 - ending x raw data value
+             * @param {number} raw_y1 - ending y raw data value
+             * @param {number} minXVal - minimum raw x value
+             * @param {number} maxXVal - maximum raw x value
+             * @param {number} minYVal - minimum raw y value
+             * @param {number} maxYVal - maximum raw y value
+             * @param {number} width - canvas width
+             * @param {number} height - canvas height
+             */
+            function getEndPoints(f, g, raw_x0, raw_y0, raw_x1, raw_y1, minXVal, maxXVal, 
+                minYVal, maxYVal, width, height) {
+                var x0 = f(raw_x0, minXVal, maxXVal, width);
+                var y0 = height - g(raw_y0, minYVal, maxYVal, height);
+                var x1 = f(raw_x1 , minXVal, maxXVal, width);
+                var y1 = height - g(raw_y1, minYVal, maxYVal, height);
+                return [x0, y0, x1, y1]
+            }
+
+            /**
+             * Draw a sparkline using canvas elements.
+             * @param {string} lineStyle - string, "line", "dotted", "dashed", "bar",
+             *  determines the line style of the sparkline
+             * @param {string} colorStyle - string, "gradient" or "solid" which
+             *  determines the color style of the sparkline
+             * @param {array} minMaxColors - array of 2 RGB triples (arrays) which
+             *  are the colors associated with minYVal and maxYVal, respectively
+             * @param {number} minYVal - minimum raw y value
+             * @param {number} maxYVal - maximum raw y value
+             * @param {array} lineColor - RGB triple for sparkline color
+             * @param {number} lineWidth - line width for sparkline
+             * @param {array} rawData - array of Y data for sparkline
+             */
+            function drawSparkline(lineStyle, colorStyle, minMaxColors, minYVal, maxYVal, 
+                lineColor, lineWidth, rawData){
+
+                // Convert data to a list of X-Y data arrays
+                var data = [];
+                for(var i = 0; i < rawData.length; i ++) {
+                    data.push({X: i + 1, Y: rawData[i]});
+                }
+
+                // Get canvas width, height, and context
+                var canvas = document.getElementById('sparkline');
+                var width = canvas.width;
+                var height = canvas.height;
+                var c = canvas.getContext('2d');
+
+                // Clear existing canvas elements
+                c.clearRect(0, 0, width, height);
+
+                // Maximum X and Y values 
+                var maxXVal = data.length;
+                var minXVal = 1;
+
+                // Set line width
+                c.lineWidth = lineWidth;
+
+                // Determine function for converting raw data to pixel locations
+                var rawToPixels;
+                var barWidth;
+
+                if (lineStyle === "bar") {
+                    rawToPixels = getBarPixels;
+                    barWidth = width / data.length;
+                }
+                else {
+                    rawToPixels = getPixels;
+                }
+
+                // If colorStyle is 'gradient', use gradients to draw
+                // the sparkline. Otherwise use 1 color
+                if (colorStyle === "gradient") {
+                    minColor = minMaxColors[0];
+                    maxColor = minMaxColors[1];
+
+                    // Convert 0-1 scale to 0-255 scale for RGB
+                    for(var i = 0; i < 3; i++) {
+                        minColor[i] = 255 * minColor[i];
+                        maxColor[i] = 255 * maxColor[i];
+                    }
+
+                    for(var i = 1; i < data.length; i ++) {
+                        // Skip drawing any line segment connected to a null Y value
+                        if (data[i].Y == null) {
+                            continue;
+                        }
+
+                        // Pixels locations of the start and end of the current
+                        // line segment
+                        [x0, y0, x1, y1] = getEndPoints(rawToPixels, getPixels,
+                            data[i - 1].X, data[i - 1].Y, data[i].X, data[i].Y, 
+                            minXVal, maxXVal, minYVal, maxYVal, 
+                            width, height);
+
+                        // Create new gradient each time a line segment is drawn
+                        var startYVal = data[i - 1].Y;
+                        var endYVal = data[i].Y;  
+
+                        [startColor, endColor] = setGradient(c, x0, y0, x1, y1, startYVal, endYVal, 
+                            minYVal, maxYVal, minColor, maxColor);
+
+                        // Draw the current line segment/bar
+                        if (lineStyle == "bar") {
+                            drawBar(c, endColor, x1, y1, barWidth, height - y1)
+                            
+                            if (i == 1) {
+                                drawBar(c, startColor, x0, y0, barWidth, height - y0);
+                            }
+                        } 
+                        else {
+                            drawLine(c, lineStyle, lineWidth, x0, y0, x1, y1)
+                        }
+                    }
+                }
+                else{
+                    // Set line color once
+                    fillColor = setColor(c, lineColor);
+
+                    for(var i = 1; i < data.length; i ++) {
+                        // Skip drawing any line segment connected to a null Y value
+                        if (data[i].Y == null) {
+                            continue;
+                        }
+                        
+                        // Pixels locations of the start and end of the current
+                        // line segment
+                        [x0, y0, x1, y1] = getEndPoints(rawToPixels, getPixels,
+                            data[i - 1].X, data[i - 1].Y, data[i].X, data[i].Y, 
+                            minXVal, maxXVal, minYVal, maxYVal, 
+                            width, height);
+
+                        // Draw the current line segment/bar
+                        if (lineStyle == "bar") {
+                            drawBar(c, fillColor, x1, y1, barWidth, height - y1)
+
+                            if (i == 1) {
+                                drawBar(c, fillColor, x0, y0, barWidth, height - y0);
+                            }
+                        } 
+                        else {
+                            drawLine(c, lineStyle, lineWidth, x0, y0, x1, y1)
+                        }
+                    }
+                }
+                
+            }       
+        </script>
+</html>
