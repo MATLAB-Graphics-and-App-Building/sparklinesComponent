@@ -1,5 +1,7 @@
 # Sparklines Component
 
+[![View Sparklines Component on File Exchange](https://www.mathworks.com/matlabcentral/images/matlab-file-exchange.svg)](https://www.mathworks.com/matlabcentral/fileexchange/98924-sparklines-component)
+
 Version: 1.0
 
 This component creates small graphs which show the general trend of the data in each row/column. Sparklines are meant to summarize data in a concise and easy-to-understand way, such that in e.g. a table, data trends for each row/column can be quickly observed and compared.
